@@ -1,4 +1,6 @@
 const mysql = require("mysql");
+const Bcrypt = require("bcrypt");
+const config = require("../config/key.json");
 const sqlConfig = require("../config/sql-config.js");
 const sqlPool = mysql.createPool(sqlConfig);
 module.exports = {
@@ -17,6 +19,7 @@ module.exports = {
   createStudent: (req, res) => {
     let student = req.body.student;
     sqlPool.getConnection((err, connection) => {
+      console.log(student);
       let check_cmd =
         "SELECT * FROM students WHERE badge_id = " +
         connection.escape(student.badge_id);
@@ -28,6 +31,7 @@ module.exports = {
           connection.release();
         } else {
           let create_cmd = `INSERT INTO students (first_name, last_name, badge_id) VALUES (?, ?, ?)`;
+          console.log(create_cmd);
           connection.query(
             create_cmd,
             [student.first_name, student.last_name, student.badge_id],
@@ -46,17 +50,28 @@ module.exports = {
     });
   },
 
-  // updateStudent: (req, res) => {
-  //   let { student_id } = req.params;
-  //   sqlPool.getConnection((err, connection) => {
-  //     if (err) throw err;
-  //     let check_cmd = `UPDATE students SET FROM students WHERE id = ` + connection.escape(student_id);
-  //     connection.query(check_cmd, (error, results, fields) => {
-  //       res.json(results);
-  //       connection.release();
-  //     });
-  //   });
-  // },
+  updateStudent: (req, res) => {
+    let { student_id } = req.params;
+    let { student } = req.body;
+    sqlPool.getConnection((err, connection) => {
+      if (err) throw err;
+      let check_cmd = `UPDATE students SET first_name = ?, last_name = ?, badge_id = ?, grade = ? WHERE id = ?`;
+      connection.query(
+        check_cmd,
+        [
+          student.first_name,
+          student.last_name,
+          student.badge_id,
+          student.grade,
+          student_id
+        ],
+        (error, results, fields) => {
+          res.json(results);
+          connection.release();
+        }
+      );
+    });
+  },
 
   deleteStudent: (req, res) => {
     let { student_id } = req.params;
@@ -67,6 +82,53 @@ module.exports = {
       connection.query(check_cmd, (error, results, fields) => {
         res.json(results);
         connection.release();
+      });
+    });
+  },
+
+  login: (req, res) => {
+    let { username, password } = req.body;
+    sqlPool.getConnection((err, connection) => {
+      if (err) throw err;
+      let login_cmd =
+        "SELECT * FROM admin WHERE user_name = " +
+        connection.escape(`${username}`);
+      connection.query(login_cmd, (error, results, fields) => {
+        // let row = results.raw
+        if (results.length > 0) {
+          let admin = results[0];
+          Bcrypt.compare(admin.password, password).then(response => {
+            if (response) {
+              let payload = { id: admin.id };
+              let token = Jwt.sign(payload, config.tokenKey, {
+                expiresIn: "1440m"
+              });
+              res.json({ token: token });
+              connection.release();
+            } else {
+              res.json({ errors: "Invalid user input" });
+              connection.release();
+            }
+          });
+        }
+      });
+    });
+  },
+  signUp: (req, res) => {
+    let { username, password } = req.body;
+    sqlPool.getConnection((err, connection) => {
+      if (err) throw err;
+      Bcrypt.hash(password, 10).then(hashedpassword => {
+        let sign_up_cmd = `INSERT INTO admin (user_name, password) VALUES (?, ?)`;
+        connection.query(
+          sign_up_cmd,
+          [username, hashedpassword],
+          (error, results, fields) => {
+            // let row = results.raw
+            res.json(results);
+            connection.release();
+          }
+        );
       });
     });
   }
