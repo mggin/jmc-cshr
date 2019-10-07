@@ -2,18 +2,23 @@ const mysql = require("mysql");
 const Bcrypt = require("bcrypt");
 const config = require("../config/key.json");
 const sqlConfig = require("../config/sql-config.js");
+const isValidToken = require('./validator');
+const Jwt = require('jsonwebtoken');
 const sqlPool = mysql.createPool(sqlConfig);
 module.exports = {
   getStudents: (req, res) => {
     let commands = `SELECT * FROM students`;
-    sqlPool.getConnection((err, connection) => {
-      if (err) throw err;
-      connection.query(commands, (error, results, fields) => {
-        // let row = results.raw
-        res.json(results);
-        connection.release();
+    if (isValidToken(req)) {
+      sqlPool.getConnection((err, connection) => {
+        if (err) throw err;
+        connection.query(commands, (error, results, fields) => {
+          res.json(results);
+          connection.release();
+        });
       });
-    });
+    } else {
+      res.json('Access Denied')
+    }
   },
 
   createStudent: (req, res) => {
@@ -97,7 +102,9 @@ module.exports = {
         // let row = results.raw
         if (results.length > 0) {
           let admin = results[0];
-          Bcrypt.compare(admin.password, password).then(response => {
+          console.log(admin.password)
+          Bcrypt.compare(password, admin.password).then(response => {
+            console.log(response)
             if (response) {
               let payload = { id: admin.id };
               let token = Jwt.sign(payload, config.tokenKey, {
@@ -114,6 +121,7 @@ module.exports = {
       });
     });
   },
+  
   signUp: (req, res) => {
     let { username, password } = req.body;
     sqlPool.getConnection((err, connection) => {
